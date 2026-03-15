@@ -316,7 +316,7 @@ class TestHeliosEngine:
         ])
 
         engine = HeliosEngine(orchestrator=orchestrator, sub_agent=sub_agent, refiner=refiner)
-        session = await engine.run("Analyze this code", file_content="def hello(): pass")
+        await engine.run("Analyze this code", file_content="def hello(): pass")
 
         # The sub-agent should have received file content
         sub_call = sub_agent.calls[0]

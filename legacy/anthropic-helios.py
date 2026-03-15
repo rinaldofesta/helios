@@ -49,7 +49,7 @@ def calculate_subagent_cost(model, input_tokens, output_tokens):
 console = Console()
 
 def opus_orchestrator(objective, file_content=None, previous_results=None, use_search=False):
-    console.print(f"\n[bold]Calling Orchestrator for your objective[/bold]")
+    console.print("\n[bold]Calling Orchestrator for your objective[/bold]")
     previous_results_text = "\n".join(previous_results) if previous_results else "None"
     if file_content:
         console.print(Panel(f"File content:\n{file_content}", title="[bold blue]File Content[/bold blue]", title_align="left", border_style="blue"))
@@ -88,11 +88,11 @@ def opus_orchestrator(objective, file_content=None, previous_results=None, use_s
                 response_text = response_text.replace(json_string, "").strip()
             except json.JSONDecodeError as e:
                 console.print(Panel(f"Error parsing JSON: {e}", title="[bold red]JSON Parsing Error[/bold red]", title_align="left", border_style="red"))
-                console.print(Panel(f"Skipping search query extraction.", title="[bold yellow]Search Query Extraction Skipped[/bold yellow]", title_align="left", border_style="yellow"))
+                console.print(Panel("Skipping search query extraction.", title="[bold yellow]Search Query Extraction Skipped[/bold yellow]", title_align="left", border_style="yellow"))
         else:
             search_query = None
 
-    console.print(Panel(response_text, title=f"[bold green]Opus Orchestrator[/bold green]", title_align="left", border_style="green", subtitle="Sending task to Haiku 👇"))
+    console.print(Panel(response_text, title="[bold green]Opus Orchestrator[/bold green]", title_align="left", border_style="green", subtitle="Sending task to Haiku 👇"))
     return response_text, file_content, search_query
 
 

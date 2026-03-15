@@ -25,7 +25,7 @@ for model in [ORCHESTRATOR_MODEL, SUBAGENT_MODEL, REFINER_MODEL]:
     try:
         print(f"Checking for model: {model}")
         m = ollama.show(model)
-    except ollama._types.ResponseError as e:
+    except ollama._types.ResponseError:
         print(f"Pulling model from ollama: {model}")
         ollama.pull(model)
 
@@ -35,7 +35,7 @@ client = Client(host='http://localhost:11434')
 console = Console()
 
 def opus_orchestrator(objective, file_content=None, previous_results=None):
-    console.print(f"\n[bold]Calling Ollama Orchestrator for your objective[/bold]")
+    console.print("\n[bold]Calling Ollama Orchestrator for your objective[/bold]")
     previous_results_text = "\n".join(previous_results) if previous_results else "None"
     if file_content:
         console.print(Panel(f"File content:\n{file_content}", title="[bold blue]File Content[/bold blue]", title_align="left", border_style="blue"))

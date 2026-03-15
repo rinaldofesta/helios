@@ -425,7 +425,7 @@ async def helios_index(
         f"  Total size: {stats.total_size:,} bytes",
         f"  Chunks: {result['chunks_total']} ({result['chunks_created']} new, {result['chunks_removed']} removed)",
         f"  Embeddings: {result['embed_status']}",
-        f"  Live watch: enabled",
+        "  Live watch: enabled",
     ] + ([f"  Errors: {len(stats.errors)}"] + [f"    - {e}" for e in stats.errors[:5]] if stats.errors else []))
 
 

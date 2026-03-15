@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from helios.config.schema import ProviderConfig
-from helios.providers.base import Provider
 
 
 def create_provider(config: ProviderConfig) -> Any:

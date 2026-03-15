@@ -6,7 +6,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from helios.config.schema import HeliosSettings, ProviderConfig
+from helios.config.schema import HeliosSettings
 
 
 def _find_config_file() -> Path | None:

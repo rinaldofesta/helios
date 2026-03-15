@@ -10,7 +10,6 @@ from typing import Any, Callable
 from helios.config.schema import HeliosSettings
 from helios.core.models import (
     CompletionResponse,
-    CostRecord,
     Message,
     Role,
     Session,
@@ -18,12 +17,10 @@ from helios.core.models import (
     SubTask,
     SubTaskStatus,
     TaskExchange,
-    TokenUsage,
     ToolCall,
     ToolResult,
 )
 from helios.providers.base import Provider, ToolDefinition
-from helios.tools.base import Tool
 from helios.tools.builtin.code_file import CreateCodeFileTool
 from helios.tools.builtin.complete import CompleteObjectiveTool
 from helios.tools.builtin.decompose import CreateSubtaskTool

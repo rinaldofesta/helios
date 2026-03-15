@@ -5,14 +5,11 @@ from __future__ import annotations
 import pytest
 
 from helios.core.events import (
-    ErrorOccurred,
     Event,
     EventBus,
     SessionCompleted,
     SessionStarted,
-    SubtaskCreated,
 )
-from helios.core.models import SubTask
 
 
 class TestEventBus:

@@ -2,15 +2,10 @@
 
 import pytest
 
-from helios.config.schema import HeliosSettings, ProviderConfig
+from helios.config.schema import HeliosSettings
 from helios.core.models import (
-    CompletionResponse,
     CostRecord,
-    Message,
-    Role,
     Session,
-    SubTask,
-    TaskExchange,
     TokenUsage,
     ToolCall,
     ToolResult,

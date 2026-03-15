@@ -60,7 +60,7 @@ def resume_command(
 
             # Save the completed session
             await store.save_session(resumed)
-            console.print(f"\n[bold green]Session completed and saved.[/bold green]")
+            console.print("\n[bold green]Session completed and saved.[/bold green]")
         finally:
             await store.close()
 

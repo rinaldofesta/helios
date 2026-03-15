@@ -6,7 +6,6 @@ import json
 import logging
 from typing import Any
 
-import ollama as ollama_lib
 from ollama import AsyncClient
 
 from helios.core.models import CompletionResponse, Message, Role, TokenUsage, ToolCall

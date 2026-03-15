@@ -1,21 +1,18 @@
 """Tests for the content indexing and search system."""
 
-import asyncio
-import tempfile
 from pathlib import Path
 
 import pytest
 
-from helios.indexing.chunker import Chunk, chunk_document
+from helios.indexing.chunker import chunk_document
 from helios.indexing.dependencies import (
-    Dependency,
     detect_dependencies,
     _parse_requirement_name,
     _find_python_site_packages,
 )
 from helios.indexing.embeddings import cosine_similarity, serialize_f32, deserialize_f32
-from helios.indexing.scanner import ScanStats, detect_language, scan_directory
-from helios.indexing.store import ContentStore, SearchResult
+from helios.indexing.scanner import detect_language, scan_directory
+from helios.indexing.store import ContentStore
 
 
 @pytest.fixture
@@ -243,7 +240,7 @@ class TestScanner:
 
     async def test_scan_ignores_git_and_pycache(self, store, sample_project):
         sid = await store.add_source("myproject", str(sample_project))
-        stats = await scan_directory(sample_project, sid, store)
+        await scan_directory(sample_project, sid, store)
 
         # .git/HEAD and __pycache__/*.pyc should not be indexed
         files = await store.get_source_files("myproject")
