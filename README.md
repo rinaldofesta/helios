@@ -1,215 +1,199 @@
 # Helios
 
-AI-powered task orchestration framework that breaks complex objectives into manageable sub-tasks, executes them with specialized agents, and synthesizes cohesive results. Supports cloud APIs and local models — bring your own GGUF.
+Open-source, local-first context intelligence engine for AI coding agents. Indexes your codebases, project dependencies, and documentation — makes everything searchable via hybrid keyword + semantic search through MCP. All data stays on your machine.
 
-## How It Works
+Think of it as a self-hosted, free alternative to [Nia](https://trynia.ai) — with the added ability to index your actual installed dependency source code for version-correct search.
 
-Helios uses a three-tier agent pattern:
+## What It Does
 
 ```
-Objective: "Build a REST API for task management"
-                    |
-        +-----------v-----------+
-        |     ORCHESTRATOR      |  Breaks down the objective
-        |  (Claude/GPT-4/Local) |  into sub-tasks using tool calls
-        +-----------+-----------+
-                    |
-          create_subtask() x N
-                    |
-        +-----------v-----------+
-        |      SUB-AGENT        |  Executes each sub-task
-        |  (Haiku/Llama/Local)  |  with full context of previous work
-        +-----------+-----------+
-                    |
-          complete_objective()
-                    |
-        +-----------v-----------+
-        |       REFINER         |  Synthesizes all results into
-        |  (Sonnet/GPT-4/Local) |  final output + code files
-        +-----------+-----------+
-                    |
-                    v
-            Project files, exchange log, stored session
+Your Project Code  ──→  helios_index   ──┐
+Installed Packages ──→  helios_deps    ──┤──→  Chunk  ──→  Embed  ──→  SQLite + FTS5
+Documentation URLs ──→  helios_web     ──┘         (Ollama)              ↑
+                                                                         │
+Any AI Agent  ←──  MCP  ←──  helios_search / helios_context  ───────────┘
 ```
+
+Helios runs as an MCP server. Any agent that supports MCP (Claude Code, Cursor, Windsurf, Continue.dev, Cline, etc.) connects to it and gets access to:
+
+- **Your project code** — indexed, chunked, and searchable
+- **Every library you use** — the actual installed source code from `site-packages` / `node_modules`, not stale training data
+- **Documentation sites** — crawled and indexed locally
+- **Hybrid search** — FTS5 keyword matching + vector semantic similarity via Ollama embeddings, fused with Reciprocal Rank Fusion
+- **Live file watching** — auto-reindexes when your code changes
 
 ## Quick Start
 
 ```bash
-# Install
-pip install -e .
+# Clone and install
+git clone https://github.com/your-org/helios.git
+cd helios
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 
-# With local model support
-pip install -e ".[local]"
-
-# With web dashboard
-pip install -e ".[web]"
-
-# Everything
-pip install -e ".[local,web,dev]"
+# Start the MCP server (for testing)
+helios serve
 ```
 
-Set your API keys (only needed for cloud providers):
+### Connect to Claude Code
 
-```bash
-export ANTHROPIC_API_KEY="sk-ant-..."
-export OPENAI_API_KEY="sk-..."
-export TAVILY_API_KEY="tvly-..."
+Add to `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "helios": {
+      "type": "stdio",
+      "command": "/path/to/helios/.venv/bin/python",
+      "args": ["-m", "helios.server"]
+    }
+  }
+}
 ```
 
-Run your first objective:
+Or for any MCP-compatible agent, point it at `python -m helios.server` via stdio transport.
 
-```bash
-helios run "Build a simple Flask TODO API with SQLite"
+### Index Your Project
+
+Once connected, the agent can use these tools:
+
+```
+# Index a codebase (auto-watches for changes)
+helios_index(path="/path/to/myproject")
+
+# Index all project dependencies (finds site-packages/node_modules automatically)
+helios_deps(path="/path/to/myproject")
+
+# Index a documentation site
+helios_web(url="https://docs.pydantic.dev")
+
+# Search across everything
+helios_search(query="how to validate nested models")
+
+# Assemble multi-source context for a task
+helios_context(task="Add OAuth2 login to the FastAPI app")
 ```
 
-## Providers
+## MCP Tools
 
-Helios supports 6 provider backends. Any provider can be assigned to any role.
+| Tool | Description |
+|------|-------------|
+| `helios_index` | Index a directory with scan + chunk + embed pipeline. Auto-watches for changes. |
+| `helios_deps` | Auto-detect and index all project dependencies from manifest files. |
+| `helios_web` | Crawl and index a documentation site or web page. |
+| `helios_search` | Hybrid keyword + semantic search across all indexed sources. |
+| `helios_context` | Multi-source context assembly — searches project, deps, and docs, returns results grouped by source type. |
+| `helios_status` | Show all indexed sources with stats (files, chunks, embeddings). |
+| `helios_read` | Read the full contents of an indexed file or web page. |
+| `helios_explore` | Browse the file structure of an indexed source. |
+| `helios_remove` | Remove an indexed source and all its data. |
 
-| Provider | Setup | Best For |
-|---|---|---|
-| **Anthropic** | Set `ANTHROPIC_API_KEY` | Claude models (Opus, Sonnet, Haiku) |
-| **OpenAI** | Set `OPENAI_API_KEY` | GPT-4o, o1 |
-| **Groq** | Set `GROQ_API_KEY` | Fast cloud inference (Llama, Mixtral) |
-| **Ollama** | Install [Ollama](https://ollama.ai), pull models | Local models via Ollama |
-| **GGUF (llama.cpp)** | Download `.gguf` files | Direct local model loading, no server |
-| **OpenAI-Compatible** | Run any compatible server | LM Studio, LocalAI, vLLM |
+## How Search Works
 
-## Configuration
+Helios uses a three-layer search architecture:
 
-Create a `helios.toml` in your project or `~/.config/helios/config.toml` globally:
+1. **FTS5 keyword search** — SQLite full-text search with BM25 ranking. Fast, exact matches.
+2. **Vector semantic search** — Ollama embeddings (`nomic-embed-text`, 768 dims) with cosine similarity. Finds conceptually similar content even with different wording.
+3. **Reciprocal Rank Fusion** — Merges keyword and semantic rankings into a single result set. Gets the best of both.
 
-```toml
-[general]
-output_dir = "./output"
-streaming = true
-max_subtasks = 20
+Search modes via `helios_search`:
+- `"auto"` (default) — hybrid if embeddings exist, keyword-only otherwise
+- `"keyword"` — FTS5 only
+- `"semantic"` — vector only
 
-# --- Cloud setup ---
-[orchestrator]
-provider = "anthropic"
-model = "claude-opus-4-6-20250527"
+## Dependency Intelligence
 
-[sub_agent]
-provider = "anthropic"
-model = "claude-haiku-4-5-20251001"
+`helios_deps` is the killer feature. It:
 
-[refiner]
-provider = "anthropic"
-model = "claude-sonnet-4-6-20250514"
+1. Parses your dependency files (`pyproject.toml`, `requirements.txt`, `package.json`)
+2. Finds the installed source code in your venv's `site-packages` or `node_modules`
+3. Indexes each package with the full pipeline (scan → chunk → embed)
+4. Names them `dep:<package>` so you can search within specific libraries
 
-[tools.web_search]
-enabled = true
-provider = "tavily"
+This means your AI agent has access to the **actual installed version** of every library — not stale training data. No more hallucinated APIs.
+
+```
+# Search within a specific dependency
+helios_search(query="OAuth2PasswordBearer", source="dep:fastapi")
+
+# Search across all dependencies
+helios_search(query="connection pool configuration")
 ```
 
-### Fully Local Setup (GGUF)
+## Live File Watching
 
-```toml
-[orchestrator]
-provider = "llama_cpp"
-model_path = "~/models/qwen2.5-72b-instruct-q4_k_m.gguf"
-n_gpu_layers = -1
-n_ctx = 32768
+After indexing, Helios watches directories for changes using `watchdog`. When files change:
 
-[sub_agent]
-provider = "llama_cpp"
-model_path = "~/models/mistral-7b-instruct-v0.3-q5_k_m.gguf"
-n_gpu_layers = -1
+1. Debounces changes (2-second window)
+2. Re-scans only modified files (content-hash based)
+3. Re-chunks only changed documents
+4. Generates embeddings only for new chunks
 
-[refiner]
-provider = "llama_cpp"
-model_path = "~/models/deepseek-coder-v2-q4_k_m.gguf"
-n_gpu_layers = -1
-```
-
-### Hybrid Setup (Cloud + Local)
-
-```toml
-[orchestrator]
-provider = "anthropic"
-model = "claude-opus-4-6-20250527"
-
-[sub_agent]
-provider = "ollama"
-model = "llama3:70b-instruct"
-
-[refiner]
-provider = "openai_compatible"
-base_url = "http://localhost:1234/v1"
-model = "local-model"
-```
-
-## CLI Commands
-
-```bash
-# Run a new objective
-helios run "Your objective here"
-helios run "Analyze this code" --file ./main.py
-helios run --provider llama_cpp --model-path ~/models/model.gguf "Objective"
-
-# Session management
-helios resume                      # Resume most recent interrupted session
-helios resume <session_id>         # Resume specific session
-helios sessions list               # List all sessions
-helios sessions show <id>          # Show session details and cost
-helios sessions search "REST API"  # Full-text search across sessions
-helios sessions delete <id>        # Delete a session
-
-# Model management
-helios models list                 # Show configured models per role
-helios models scan ~/models/       # Discover GGUF files
-helios models test                 # Test provider connectivity
-helios models set orchestrator llama_cpp ~/models/qwen.gguf
-
-# Configuration
-helios config show                 # Display resolved config
-helios config validate             # Validate config file
-
-# Web UI
-helios web                         # Start web dashboard (default: http://localhost:8000)
-helios web --port 3000             # Custom port
-```
-
-## Skills & Learning
-
-Helios learns from completed sessions. After a successful run:
-
-1. The system analyzes the task breakdown pattern
-2. If it detects a reusable procedure, it extracts a **skill**
-3. Future sessions with similar objectives automatically recall relevant skills
-4. The orchestrator uses these skills as guidance for better task decomposition
-
-Skills improve over time — frequently successful skills rank higher.
-
-```bash
-helios sessions search "API"       # Find past sessions
-helios skills list                 # Browse extracted skills
-helios skills show <id>            # View skill details
-```
-
-## Web Dashboard
-
-Start with `helios web`. Features:
-
-- **Session list** — Browse all sessions with status, cost, and timestamps
-- **Live run view** — Watch agent output stream in real-time
-- **Cost analytics** — Track spending across providers and sessions
-- **Skills browser** — View and manage extracted skills
+The watcher runs as a background task inside the MCP server process.
 
 ## Architecture
 
 ```
 src/helios/
-  core/          Engine, session management, data models, event bus
-  providers/     Anthropic, OpenAI, Ollama, Groq, llama.cpp, OpenAI-compatible
-  tools/         Tool protocol, adapters, 7 built-in tools
-  memory/        SQLite store, FTS5 search, skills system
-  cli/           Typer CLI with run/resume/sessions/models/config commands
-  web/           FastAPI backend, WebSocket streaming, dashboard frontend
-  output/        Console renderer, project file creator, markdown logger
-  config/        TOML + env var config loading, Pydantic settings
+  indexing/        Content intelligence pipeline
+    store.py       SQLite + FTS5 for documents, chunks, and embeddings
+    scanner.py     Directory scanner with 60+ language mappings
+    chunker.py     Language-aware document chunking
+    embeddings.py  Ollama embedding generation + cosine similarity
+    crawler.py     URL crawler with HTML text extraction
+    dependencies.py Dependency detection and source path resolution
+    watcher.py     File watcher with debounced auto-reindexing
+  server/          MCP server
+    app.py         FastMCP server with 9 tools
+    __main__.py    Entry point (python -m helios.server)
+  core/            Task orchestration engine (Orchestrator/Sub-agent/Refiner)
+  providers/       LLM provider abstractions (Ollama, Groq, OpenAI-compatible, llama.cpp)
+  memory/          Session persistence (SQLite + JSON), skills system
+  cli/             Typer CLI (run, resume, serve, sessions, models, config, web)
+  web/             FastAPI dashboard with WebSocket streaming
+  config/          TOML + env var + CLI flag config loading
+  tools/           Tool protocol and 7 built-in orchestration tools
+  models/          HuggingFace Hub integration (search + GGUF download)
 ```
+
+## Tech Stack
+
+- **Python 3.11+** with async-first design
+- **SQLite + FTS5** for all persistence and full-text search
+- **MCP SDK** (`mcp` package) for agent integration
+- **Ollama** for local embeddings (`nomic-embed-text`) and LLM inference
+- **Pydantic v2** for all data models
+- **aiosqlite** for async database access
+- **watchdog** for file system monitoring
+- **httpx** for URL crawling (transitive dep from mcp)
+- **Typer** for CLI, **Rich** for console output
+- **FastAPI** for web dashboard (optional)
+
+## Configuration
+
+Helios uses layered configuration (each overrides the previous):
+
+1. Built-in defaults
+2. Config file (`helios.toml` or `~/.config/helios/config.toml`)
+3. Environment variables (`GROQ_API_KEY`, etc.)
+4. CLI flags
+
+See `helios.toml.example` for all options.
+
+## Running Tests
+
+```bash
+pip install -e ".[dev]"
+pytest
+```
+
+152 tests covering indexing, chunking, search, embeddings, dependencies, crawler, and file watcher.
+
+## Requirements
+
+- Python 3.11+
+- [Ollama](https://ollama.ai) (for embeddings and local LLM inference) — optional but recommended
+- No cloud APIs required — everything runs locally
 
 ## License
 

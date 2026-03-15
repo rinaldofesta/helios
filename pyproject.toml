@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "helios"
 version = "1.0.0a1"
-description = "AI-powered task orchestration framework — local & open-weight models only"
+description = "Local-first context intelligence engine for AI coding agents — indexes codebases, dependencies, and docs via MCP"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"

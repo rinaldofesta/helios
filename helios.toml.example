@@ -1,9 +1,13 @@
-# Helios Configuration — Local & Open-Weight Models
-# Copy to helios.toml and customize
+# Helios Configuration
+# Copy to helios.toml and customize.
+#
+# Helios is a local-first context intelligence engine for AI coding agents.
+# This config controls the LLM providers used for task orchestration and
+# optional features like web search and model storage.
 
 [general]
 output_dir = "."
-# data_dir = "~/.helios"
+# data_dir = "~/.helios"          # Where databases and models are stored
 # streaming = false
 # max_subtasks = 20
 
@@ -11,11 +15,15 @@ output_dir = "."
 [models]
 # models_dir = "~/.helios/models"
 
-# --- Provider options ---
-# ollama            — local models via Ollama (default)
-# groq              — fast cloud inference for open-weight models
-# openai_compatible — any OpenAI-compatible server (LM Studio, vLLM, LocalAI)
-# llama_cpp         — load GGUF files directly (pip install helios[local])
+# --- LLM Provider Configuration ---
+# Used by the task orchestration engine (helios run).
+# The MCP server (helios serve) uses Ollama for embeddings only.
+#
+# Available providers:
+#   ollama            — local models via Ollama (default)
+#   groq              — fast cloud inference for open-weight models
+#   openai_compatible — any OpenAI-compatible server (LM Studio, vLLM, LocalAI)
+#   llama_cpp         — load GGUF files directly (pip install helios[local])
 
 [orchestrator]
 provider = "ollama"
@@ -34,9 +42,9 @@ web_search_enabled = false
 # tavily_api_key = ""  # or set TAVILY_API_KEY env var
 read_file_enabled = true
 
-# --- Alternative configurations ---
+# --- Alternative Configurations ---
 
-# Groq (fast cloud inference for open models):
+# Groq (fast cloud inference for open-weight models):
 # [orchestrator]
 # provider = "groq"
 # model = "llama-3.3-70b-versatile"
@@ -48,9 +56,9 @@ read_file_enabled = true
 # model = "your-model-name"
 # base_url = "http://localhost:1234/v1"
 
-# Direct GGUF loading (download models from HuggingFace via the web UI):
+# Direct GGUF loading:
 # [orchestrator]
 # provider = "llama_cpp"
-# model_path = "~/.helios/models/TheBloke--Llama-3-70B-GGUF/llama-3-70b.Q4_K_M.gguf"
+# model_path = "~/.helios/models/model.gguf"
 # n_ctx = 8192
 # n_gpu_layers = -1
