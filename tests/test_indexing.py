@@ -7,6 +7,12 @@ from pathlib import Path
 import pytest
 
 from helios.indexing.chunker import Chunk, chunk_document
+from helios.indexing.dependencies import (
+    Dependency,
+    detect_dependencies,
+    _parse_requirement_name,
+    _find_python_site_packages,
+)
 from helios.indexing.embeddings import cosine_similarity, serialize_f32, deserialize_f32
 from helios.indexing.scanner import ScanStats, detect_language, scan_directory
 from helios.indexing.store import ContentStore, SearchResult
@@ -535,3 +541,194 @@ class TestChunkStore:
         await store.remove_source("test")
         # Chunks should be gone (source_id FK)
         assert not await store.has_chunks()
+
+
+# --------------------------------------------------------------------------- #
+#  Dependency detection
+# --------------------------------------------------------------------------- #
+
+
+class TestDependencyDetection:
+    def test_parse_requirement_name(self):
+        assert _parse_requirement_name("pydantic>=2.0.0") == "pydantic"
+        assert _parse_requirement_name("pydantic-settings>=2.0.0") == "pydantic-settings"
+        assert _parse_requirement_name("ollama") == "ollama"
+        assert _parse_requirement_name("PyYAML==6.0") == "PyYAML"
+        assert _parse_requirement_name("") is None
+
+    def test_detect_pyproject(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\ndependencies = ["requests>=2.0", "click"]\n'
+            '[project.optional-dependencies]\ndev = ["pytest"]\n'
+        )
+        result = detect_dependencies(tmp_path, include_dev=True)
+        assert "python" in result.ecosystems
+        names = [d.name for d in result.dependencies]
+        assert "requests" in names
+        assert "click" in names
+        assert "pytest" in names
+
+    def test_detect_pyproject_no_dev(self, tmp_path):
+        (tmp_path / "pyproject.toml").write_text(
+            '[project]\ndependencies = ["requests"]\n'
+            '[project.optional-dependencies]\ndev = ["pytest"]\n'
+        )
+        result = detect_dependencies(tmp_path, include_dev=False)
+        names = [d.name for d in result.dependencies]
+        assert "requests" in names
+        assert "pytest" not in names
+
+    def test_detect_requirements_txt(self, tmp_path):
+        (tmp_path / "requirements.txt").write_text(
+            "flask==2.3.0\nredis>=4.0\n# comment\n-r other.txt\n"
+        )
+        result = detect_dependencies(tmp_path)
+        names = [d.name for d in result.dependencies]
+        assert "flask" in names
+        assert "redis" in names
+        assert len(names) == 2
+
+    def test_detect_package_json(self, tmp_path):
+        (tmp_path / "package.json").write_text(
+            '{"dependencies": {"react": "^18.0"}, "devDependencies": {"jest": "^29.0"}}'
+        )
+        result = detect_dependencies(tmp_path, include_dev=True)
+        assert "javascript" in result.ecosystems
+        names = [d.name for d in result.dependencies]
+        assert "react" in names
+        assert "jest" in names
+
+    def test_detect_no_deps(self, tmp_path):
+        result = detect_dependencies(tmp_path)
+        assert result.dependencies == []
+        assert result.ecosystems == []
+
+    def test_find_site_packages(self, tmp_path):
+        # Create a fake venv structure
+        sp = tmp_path / ".venv" / "lib" / "python3.11" / "site-packages"
+        sp.mkdir(parents=True)
+        found = _find_python_site_packages(tmp_path)
+        assert found == sp
+
+    def test_find_site_packages_missing(self, tmp_path):
+        assert _find_python_site_packages(tmp_path) is None
+
+    def test_resolve_real_project(self):
+        """Test against the actual Helios project."""
+        result = detect_dependencies(Path.cwd())
+        assert "python" in result.ecosystems
+        assert result.resolved > 0
+        # At least pydantic should be resolved
+        pydantic = next((d for d in result.dependencies if d.name == "pydantic"), None)
+        assert pydantic is not None
+        assert pydantic.source_path is not None
+        assert pydantic.source_path.is_dir()
+
+
+# --------------------------------------------------------------------------- #
+#  File watcher
+# --------------------------------------------------------------------------- #
+
+
+class TestFileWatcher:
+    async def test_watcher_creates(self):
+        from helios.indexing.watcher import FileWatcher
+
+        changes: list[str] = []
+
+        async def on_change(sid: str) -> None:
+            changes.append(sid)
+
+        watcher = FileWatcher(on_change=on_change, debounce=0.5)
+        assert watcher._running is False
+
+    async def test_watcher_watch_nonexistent(self):
+        from helios.indexing.watcher import FileWatcher
+
+        watcher = FileWatcher(on_change=lambda sid: None)
+        watcher.watch("s1", "/nonexistent/path/xyz")
+        assert len(watcher._watched) == 0
+
+    async def test_watcher_watch_valid(self, tmp_path):
+        from helios.indexing.watcher import FileWatcher
+
+        watcher = FileWatcher(on_change=lambda sid: None)
+        watcher.watch("s1", str(tmp_path))
+        assert str(tmp_path) in watcher._watched
+
+
+# --------------------------------------------------------------------------- #
+#  Crawler
+# --------------------------------------------------------------------------- #
+
+
+class TestCrawler:
+    def test_extract_text_basic(self):
+        from helios.indexing.crawler import extract_text
+
+        html = "<h1>Title</h1><p>Hello <b>world</b></p>"
+        title, text = extract_text(html)
+        assert "Hello" in text
+        assert "world" in text
+
+    def test_extract_text_skips_scripts(self):
+        from helios.indexing.crawler import extract_text
+
+        html = "<p>Keep</p><script>var x = 1;</script><p>Also keep</p>"
+        _, text = extract_text(html)
+        assert "Keep" in text
+        assert "var x" not in text
+
+    def test_extract_text_skips_nav_footer(self):
+        from helios.indexing.crawler import extract_text
+
+        html = "<nav>Navigation</nav><main>Content</main><footer>Foot</footer>"
+        _, text = extract_text(html)
+        assert "Content" in text
+        assert "Navigation" not in text
+        assert "Foot" not in text
+
+    def test_extract_text_preserves_code(self):
+        from helios.indexing.crawler import extract_text
+
+        html = "<pre><code>def hello():\n    pass</code></pre>"
+        _, text = extract_text(html)
+        assert "def hello():" in text
+
+    def test_extract_title(self):
+        from helios.indexing.crawler import extract_text
+
+        html = "<html><head><title>My Page</title></head><body>Content</body></html>"
+        title, _ = extract_text(html)
+        assert title == "My Page"
+
+    def test_extract_links(self):
+        from helios.indexing.crawler import extract_links
+
+        html = '<a href="/docs">Docs</a><a href="https://other.com/x">Other</a>'
+        links = extract_links(html, "https://example.com/")
+        assert "https://example.com/docs" in links
+        assert "https://other.com/x" in links
+
+    def test_extract_links_skips_special(self):
+        from helios.indexing.crawler import extract_links
+
+        html = '<a href="javascript:void(0)">JS</a><a href="mailto:x@y.com">Mail</a><a href="/ok">OK</a>'
+        links = extract_links(html, "https://example.com/")
+        assert len(links) == 1
+        assert links[0] == "https://example.com/ok"
+
+    def test_normalize_url(self):
+        from helios.indexing.crawler import _normalize_url
+
+        assert _normalize_url("https://x.com/docs/") == "https://x.com/docs"
+        assert _normalize_url("https://x.com/docs#section") == "https://x.com/docs"
+        assert _normalize_url("https://x.com/") == "https://x.com/"
+        assert _normalize_url("https://x.com/a?q=1") == "https://x.com/a?q=1"
+
+    def test_extract_text_empty(self):
+        from helios.indexing.crawler import extract_text
+
+        title, text = extract_text("")
+        assert title == ""
+        assert text == ""
