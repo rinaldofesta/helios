@@ -1,0 +1,56 @@
+# Helios Configuration — Local & Open-Weight Models
+# Copy to helios.toml and customize
+
+[general]
+output_dir = "."
+# data_dir = "~/.helios"
+# streaming = false
+# max_subtasks = 20
+
+# Where downloaded GGUF models are stored
+[models]
+# models_dir = "~/.helios/models"
+
+# --- Provider options ---
+# ollama            — local models via Ollama (default)
+# groq              — fast cloud inference for open-weight models
+# openai_compatible — any OpenAI-compatible server (LM Studio, vLLM, LocalAI)
+# llama_cpp         — load GGUF files directly (pip install helios[local])
+
+[orchestrator]
+provider = "ollama"
+model = "llama3:instruct"
+
+[sub_agent]
+provider = "ollama"
+model = "llama3:instruct"
+
+[refiner]
+provider = "ollama"
+model = "llama3:instruct"
+
+[tools]
+web_search_enabled = false
+# tavily_api_key = ""  # or set TAVILY_API_KEY env var
+read_file_enabled = true
+
+# --- Alternative configurations ---
+
+# Groq (fast cloud inference for open models):
+# [orchestrator]
+# provider = "groq"
+# model = "llama-3.3-70b-versatile"
+# api_key = ""  # or set GROQ_API_KEY env var
+
+# OpenAI-compatible server (LM Studio, vLLM, etc.):
+# [orchestrator]
+# provider = "openai_compatible"
+# model = "your-model-name"
+# base_url = "http://localhost:1234/v1"
+
+# Direct GGUF loading (download models from HuggingFace via the web UI):
+# [orchestrator]
+# provider = "llama_cpp"
+# model_path = "~/.helios/models/TheBloke--Llama-3-70B-GGUF/llama-3-70b.Q4_K_M.gguf"
+# n_ctx = 8192
+# n_gpu_layers = -1

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Helios</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <header>
+        <h1>Helios</h1>
+        <nav>
+            <button class="nav-btn active" data-view="run">New Run</button>
+            <button class="nav-btn" data-view="discover">Discover</button>
+            <button class="nav-btn" data-view="my-models">My Models</button>
+            <button class="nav-btn" data-view="sessions">Sessions</button>
+            <button class="nav-btn" data-view="config">Config</button>
+        </nav>
+    </header>
+
+    <main>
+        <!-- ====== New Run ====== -->
+        <section id="view-run" class="view active">
+            <div class="run-form">
+                <textarea id="objective" placeholder="Enter your objective..." rows="3"></textarea>
+
+                <div class="model-config">
+                    <div class="model-config-header" onclick="toggleModelConfig()">
+                        <span>Model Configuration</span>
+                        <span id="model-config-toggle">+</span>
+                    </div>
+                    <div id="model-config-body" class="model-config-body hidden">
+                        <div class="role-block">
+                            <span class="role-label role-orchestrator">Orchestrator</span>
+                            <select class="model-select" data-role="orch"></select>
+                        </div>
+                        <div class="role-block">
+                            <span class="role-label role-subagent">Sub-agent</span>
+                            <select class="model-select" data-role="sub"></select>
+                        </div>
+                        <div class="role-block">
+                            <span class="role-label role-refiner">Refiner</span>
+                            <select class="model-select" data-role="ref"></select>
+                        </div>
+                        <div id="no-models-hint" class="no-models-hint hidden">
+                            No models found. Go to <a href="#" onclick="navTo('discover'); return false;">Discover</a> to download models, or install <a href="https://ollama.com" target="_blank" rel="noopener">Ollama</a>.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="run-controls">
+                    <button id="btn-run" onclick="startRun()">Run</button>
+                    <label><input type="checkbox" id="use-ws" checked> Stream live</label>
+                </div>
+            </div>
+            <div id="run-output" class="output-area"></div>
+        </section>
+
+        <!-- ====== Discover (HuggingFace Hub) ====== -->
+        <section id="view-discover" class="view">
+            <div class="discover-header">
+                <div class="search-bar">
+                    <input type="text" id="hub-search-input" placeholder="Search models (e.g. llama, mistral, phi, qwen, deepseek)...">
+                    <button onclick="searchHub()">Search</button>
+                </div>
+            </div>
+            <div id="trending-section">
+                <h3 class="section-title">Trending Models</h3>
+                <div id="trending-results" class="discover-grid"></div>
+            </div>
+            <div id="search-section" class="hidden">
+                <h3 class="section-title" id="search-title">Search Results</h3>
+                <div id="hub-results" class="discover-grid"></div>
+            </div>
+        </section>
+
+        <!-- ====== My Models ====== -->
+        <section id="view-my-models" class="view">
+            <div class="my-models-tabs">
+                <button class="my-models-tab active" data-tab="downloaded">Downloaded GGUF</button>
+                <button class="my-models-tab" data-tab="ollama-tab">Ollama</button>
+            </div>
+            <div id="tab-downloaded" class="my-models-content active">
+                <div id="local-models-list"></div>
+            </div>
+            <div id="tab-ollama-tab" class="my-models-content">
+                <div id="ollama-models-list"></div>
+            </div>
+        </section>
+
+        <!-- ====== Sessions ====== -->
+        <section id="view-sessions" class="view">
+            <div class="search-bar">
+                <input type="text" id="search-input" placeholder="Search sessions...">
+                <button onclick="searchSessions()">Search</button>
+            </div>
+            <div id="sessions-list"></div>
+            <div id="session-detail" class="hidden"></div>
+        </section>
+
+        <!-- ====== Config ====== -->
+        <section id="view-config" class="view">
+            <pre id="config-output"></pre>
+        </section>
+    </main>
+
+    <!-- Role picker modal (shown after download) -->
+    <div id="role-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-title">Use this model as...</div>
+            <div class="modal-model-name" id="modal-model-name"></div>
+            <div class="modal-buttons">
+                <button class="role-pick-btn role-orchestrator" onclick="assignRole('orch')">Orchestrator</button>
+                <button class="role-pick-btn role-subagent" onclick="assignRole('sub')">Sub-agent</button>
+                <button class="role-pick-btn role-refiner" onclick="assignRole('ref')">Refiner</button>
+                <button class="role-pick-btn all-roles" onclick="assignRole('all')">All Roles</button>
+            </div>
+            <button class="modal-close" onclick="closeRoleModal()">Skip</button>
+        </div>
+    </div>
+
+    <script src="/app.js"></script>
+</body>
+</html>

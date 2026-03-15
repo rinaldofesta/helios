@@ -1,0 +1,43 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "helios"
+version = "1.0.0a1"
+description = "AI-powered task orchestration framework — local & open-weight models only"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "ollama>=0.4.0",
+    "groq>=0.11.0",
+    "openai>=1.50.0",
+    "huggingface-hub>=0.25.0",
+    "rich>=13.0.0",
+    "typer>=0.12.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "aiosqlite>=0.20.0",
+    "tavily-python>=0.5.0",
+    "mcp>=1.0.0",
+]
+
+[project.optional-dependencies]
+local = ["llama-cpp-python>=0.3.0"]
+web = ["fastapi>=0.115.0", "uvicorn>=0.30.0", "websockets>=13.0"]
+dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "ruff>=0.6.0"]
+
+[project.scripts]
+helios = "helios.cli.app:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/helios"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
