@@ -70,6 +70,10 @@ src/helios/
     hub.py             Model search + GGUF download
 ```
 
+**New indexing modules:**
+- `indexing/api_extractor.py` — Regex-based API endpoint extraction (Next.js, FastAPI, NestJS, Express)
+- `indexing/claude_md_generator.py` — CLAUDE.md generation with API contract and FE rules
+
 ## Tech Stack
 
 - **Python 3.11+** with async-first design
@@ -95,10 +99,12 @@ src/helios/
 - **Open-weight only**: No proprietary cloud providers. Ollama, Groq, OpenAI-compatible, llama.cpp.
 - **Shared pipeline**: `_chunk_source()` and `_embed_source()` are shared by all three ingestion paths (directory, deps, web).
 
-## MCP Tools (9) and Resources (2)
+## MCP Tools (11) and Resources (2)
 
 | Tool | Description |
 |------|-------------|
+| `helios_onboard` | **One-shot project setup**: index codebase, analyze deps, extract API surface, generate CLAUDE.md with API contract and FE rules. |
+| `helios_api` | Query extracted API endpoints. Filter by source, method, or path. |
 | `helios_index` | Index a directory (scan → chunk → embed). Auto-watches for changes. |
 | `helios_deps` | Auto-detect and index project dependencies. Discovers docs URLs from metadata. |
 | `helios_web` | Crawl and index a documentation site or web page. |
@@ -159,7 +165,7 @@ helios serve
 python -m helios.server
 
 # Run tests
-pytest                    # 152 tests
+pytest                    # 200 tests
 pytest tests/test_indexing.py -v  # indexing-specific tests
 ```
 

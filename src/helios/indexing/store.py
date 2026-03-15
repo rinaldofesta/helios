@@ -69,6 +69,23 @@ CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
     chunk_id UNINDEXED,
     content
 );
+
+CREATE TABLE IF NOT EXISTS api_endpoints (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    handler TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    line_number INTEGER DEFAULT 0,
+    request_type TEXT,
+    response_type TEXT,
+    framework TEXT NOT NULL DEFAULT '',
+    extracted_at TEXT NOT NULL,
+    FOREIGN KEY (source_id) REFERENCES sources(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_source ON api_endpoints(source_id);
 """
 
 
@@ -292,6 +309,7 @@ class ContentStore:
                 )
         await db.execute("DELETE FROM chunks WHERE source_id = ?", (source_id,))
 
+        await db.execute("DELETE FROM api_endpoints WHERE source_id = ?", (source_id,))
         await db.execute("DELETE FROM documents WHERE source_id = ?", (source_id,))
         await db.execute("DELETE FROM sources WHERE id = ?", (source_id,))
         await db.commit()
@@ -776,6 +794,70 @@ class ContentStore:
         async with db.execute("SELECT COUNT(*) FROM chunks LIMIT 1") as cur:
             row = await cur.fetchone()
             return (row[0] if row else 0) > 0
+
+    # ----- API Endpoints ----- #
+
+    async def store_api_endpoints(
+        self, source_id: str, endpoints: list[dict],
+    ) -> int:
+        """Store extracted API endpoints, replacing any existing ones for the source."""
+        db = await self._ensure_db()
+        await db.execute("DELETE FROM api_endpoints WHERE source_id = ?", (source_id,))
+        now = datetime.now().isoformat()
+        for ep in endpoints:
+            await db.execute(
+                """INSERT INTO api_endpoints
+                   (id, source_id, method, path, handler, file_path,
+                    line_number, request_type, response_type, framework, extracted_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    uuid4().hex[:16], source_id,
+                    ep["method"], ep["path"], ep["handler"], ep["file_path"],
+                    ep.get("line_number", 0),
+                    ep.get("request_type"), ep.get("response_type"),
+                    ep.get("framework", ""), now,
+                ),
+            )
+        await db.commit()
+        return len(endpoints)
+
+    async def get_api_endpoints(
+        self, source_id: str | None = None,
+    ) -> list[dict]:
+        """Get stored API endpoints, optionally filtered by source."""
+        db = await self._ensure_db()
+        if source_id:
+            query = "SELECT * FROM api_endpoints WHERE source_id = ? ORDER BY path, method"
+            params: tuple = (source_id,)
+        else:
+            query = "SELECT * FROM api_endpoints ORDER BY path, method"
+            params = ()
+        rows: list[dict] = []
+        async with db.execute(query, params) as cur:
+            async for row in cur:
+                rows.append({
+                    "id": row[0], "source_id": row[1],
+                    "method": row[2], "path": row[3],
+                    "handler": row[4], "file_path": row[5],
+                    "line_number": row[6],
+                    "request_type": row[7], "response_type": row[8],
+                    "framework": row[9], "extracted_at": row[10],
+                })
+        return rows
+
+    async def clear_api_endpoints(self, source_id: str) -> None:
+        """Remove all API endpoints for a source."""
+        db = await self._ensure_db()
+        await db.execute("DELETE FROM api_endpoints WHERE source_id = ?", (source_id,))
+        await db.commit()
+
+    async def has_api_endpoints(self, source_id: str) -> bool:
+        """Check if a source has any stored API endpoints."""
+        db = await self._ensure_db()
+        async with db.execute(
+            "SELECT 1 FROM api_endpoints WHERE source_id = ? LIMIT 1", (source_id,),
+        ) as cur:
+            return await cur.fetchone() is not None
 
     # ----- Document Search (legacy) ----- #
 

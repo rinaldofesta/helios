@@ -9,7 +9,10 @@ from urllib.parse import urlparse
 
 from mcp.server.fastmcp import FastMCP
 
+from helios.indexing.api_extractor import extract_api_surface
 from helios.indexing.chunker import chunk_document
+from helios.indexing.claude_md_generator import generate_claude_md, write_claude_md
+from helios.indexing.stack_analyzer import analyze_stack
 from helios.indexing.crawler import crawl_and_index
 from helios.indexing.dependencies import (
     detect_dependencies,
@@ -83,6 +86,11 @@ async def _reindex_source(source_id: str, store: ContentStore) -> None:
     await scan_directory(source.path, source_id, store)
     await _chunk_source(source_id, store)
     await _embed_source(source_id, store)
+    # Re-extract API surface if this source was previously onboarded
+    if await store.has_api_endpoints(source_id):
+        surface = await extract_api_surface(source_id, store)
+        endpoints = [ep.__dict__ for ep in surface.endpoints]
+        await store.store_api_endpoints(source_id, endpoints)
 
 
 # --------------------------------------------------------------------------- #
@@ -177,13 +185,18 @@ mcp = FastMCP(
         "on the user's machine and makes them searchable via hybrid "
         "keyword + semantic search. All data stays local.\n\n"
         "Workflow:\n"
-        "1. helios_index — index a codebase or directory\n"
-        "2. helios_deps — auto-detect and index project dependencies\n"
-        "3. helios_web — index documentation sites or web pages\n"
-        "4. helios_search — find relevant code/docs across all sources\n"
-        "5. helios_context — assemble multi-source context for a task\n"
-        "6. helios_read — get full file contents\n"
-        "7. helios_explore — browse project structure"
+        "1. helios_onboard — one-shot project setup: index codebase, "
+        "analyze dependencies, extract API surface, generate CLAUDE.md "
+        "with API contract and FE development rules\n"
+        "2. helios_search — find relevant code/docs across all sources\n"
+        "3. helios_context — assemble multi-source context for a task\n"
+        "4. helios_api — query extracted API endpoints\n"
+        "5. helios_read — get full file contents\n"
+        "6. helios_explore — browse project structure\n\n"
+        "Individual tools (if you need finer control):\n"
+        "- helios_index — index a codebase or directory\n"
+        "- helios_deps — auto-detect and index project dependencies\n"
+        "- helios_web — index documentation sites or web pages"
     ),
 )
 
@@ -219,6 +232,196 @@ async def resource_sources() -> str:
 # --------------------------------------------------------------------------- #
 #  Tools
 # --------------------------------------------------------------------------- #
+
+
+@mcp.tool()
+async def helios_onboard(
+    path: str,
+    name: str | None = None,
+    embed: bool = True,
+    embed_model: str = DEFAULT_EMBED_MODEL,
+    include_dev_deps: bool = False,
+    write_claude: bool = True,
+) -> str:
+    """One-shot project onboarding: index codebase, analyze dependencies, extract API surface, and generate CLAUDE.md.
+
+    This is the recommended first step when starting work on a project.
+    It indexes all source files, detects and indexes dependencies,
+    extracts the backend API surface (endpoints, methods, types),
+    and generates a CLAUDE.md with API contract and frontend development rules.
+
+    Supported frameworks: Next.js App Router, FastAPI, NestJS, Express.
+
+    Args:
+        path: Absolute path to the project directory.
+        name: Friendly name for this source (defaults to directory name).
+        embed: Generate embeddings for semantic search (default True).
+        embed_model: Ollama embedding model (default "nomic-embed-text").
+        include_dev_deps: Include dev/test dependencies (default False).
+        write_claude: Write CLAUDE.md to project root (default True).
+    """
+    resolved = Path(path).expanduser().resolve()
+    if not resolved.is_dir():
+        return f"Error: '{path}' is not a directory"
+
+    source_name = name or resolved.name
+    store = await get_store()
+
+    # 1. Index the codebase
+    result = await _run_index_pipeline(
+        resolved, source_name, store, embed=embed, embed_model=embed_model,
+    )
+    stats = result["scan"]
+
+    # 2. Detect and index dependencies
+    deps_result = detect_dependencies(resolved, include_dev=include_dev_deps)
+    dep_count = 0
+    ecosystems = deps_result.ecosystems if deps_result.dependencies else []
+
+    for dep in deps_result.dependencies:
+        if not dep.source_path:
+            continue
+        file_count = estimate_package_size(dep.source_path)
+        if file_count > MAX_PACKAGE_FILES:
+            continue
+        await _run_index_pipeline(
+            dep.source_path, f"dep:{dep.name}", store,
+            source_type="dependency", embed=embed, embed_model=embed_model,
+        )
+        dep_count += 1
+
+    # 3. Extract API surface
+    surface = await extract_api_surface(result["source_id"], store)
+    endpoints = [ep.__dict__ for ep in surface.endpoints]
+    await store.store_api_endpoints(result["source_id"], endpoints)
+
+    # 4. Analyze project stack (FE libraries, types, API clients, patterns)
+    stack = await analyze_stack(result["source_id"], resolved, store)
+
+    # 5. Generate and write CLAUDE.md
+    claude_md_path = ""
+    helios_section = generate_claude_md(
+        project_name=source_name,
+        project_path=str(resolved),
+        api_surface=surface,
+        ecosystems=ecosystems,
+        file_count=stats.files_indexed,
+        dep_count=dep_count,
+        stack=stack,
+    )
+
+    if write_claude:
+        claude_md_path = write_claude_md(str(resolved), helios_section)
+
+    # 6. Build summary
+    method_counts: dict[str, int] = {}
+    for ep in surface.endpoints:
+        method_counts[ep.method] = method_counts.get(ep.method, 0) + 1
+    method_summary = ", ".join(f"{c} {m}" for m, c in sorted(method_counts.items()))
+
+    lines = [
+        f"Onboarded: {source_name} ({resolved})",
+        "",
+        "  Codebase:",
+        f"    Files indexed: {stats.files_indexed}",
+        f"    Chunks: {result['chunks_total']} ({result['chunks_created']} new)",
+        f"    Embeddings: {result['embed_status']}",
+        "    Live watch: enabled",
+        "",
+        "  Dependencies:",
+        f"    Ecosystems: {', '.join(ecosystems) if ecosystems else 'none detected'}",
+        f"    Found: {len(deps_result.dependencies)} dependencies",
+        f"    Indexed: {dep_count} packages",
+        "",
+        "  API Surface:",
+        f"    Frameworks: {', '.join(surface.frameworks) if surface.frameworks else 'none detected'}",
+        f"    Endpoints: {len(surface.endpoints)}" + (f" ({method_summary})" if method_summary else ""),
+    ]
+
+    # Stack analysis summary
+    if stack:
+        lines.append("")
+        lines.append("  Stack Analysis:")
+        if stack.libraries:
+            lib_cats = set(lib.category.replace("_", " ").title() for lib in stack.libraries)
+            lines.append(f"    FE libraries: {len(stack.libraries)} ({', '.join(sorted(lib_cats))})")
+        if stack.api_clients:
+            lines.append(f"    API clients: {len(stack.api_clients)} found")
+        if stack.type_defs:
+            lines.append(f"    Types/schemas: {len(stack.type_defs)} extracted")
+        if stack.patterns:
+            p = stack.patterns
+            if p.naming_convention != "not detected":
+                lines.append(f"    Naming: {p.naming_convention}")
+            if p.key_directories:
+                lines.append(f"    Structure: {', '.join(p.key_directories[:8])}")
+
+    if write_claude and claude_md_path:
+        lines.extend([
+            "",
+            "  CLAUDE.md:",
+            f"    Written to: {claude_md_path}",
+            "    Contains: API contract, tech stack, types, conventions, FE rules",
+        ])
+
+    return "\n".join(lines)
+
+
+@mcp.tool()
+async def helios_api(
+    source: str | None = None,
+    method: str | None = None,
+    path_contains: str | None = None,
+) -> str:
+    """Query extracted API endpoints from onboarded projects.
+
+    Returns the stored API surface extracted by helios_onboard.
+    Use this to check if a specific endpoint exists before writing frontend code.
+
+    Args:
+        source: Filter by source name (e.g. "myproject").
+        method: Filter by HTTP method (e.g. "GET", "POST").
+        path_contains: Filter endpoints whose path contains this string.
+    """
+    store = await get_store()
+
+    # Find source_id if source name given
+    source_id = None
+    if source:
+        sources = await store.list_sources()
+        match = next((s for s in sources if s.name == source), None)
+        if match:
+            source_id = match.id
+
+    endpoints = await store.get_api_endpoints(source_id=source_id)
+
+    if not endpoints:
+        if source:
+            return f"No API endpoints found for source '{source}'. Run helios_onboard first."
+        return "No API endpoints stored. Run helios_onboard on a project first."
+
+    # Apply filters
+    if method:
+        endpoints = [e for e in endpoints if e["method"] == method.upper()]
+    if path_contains:
+        endpoints = [e for e in endpoints if path_contains in e["path"]]
+
+    if not endpoints:
+        return "No endpoints match the given filters."
+
+    lines = [f"API Endpoints ({len(endpoints)}):", ""]
+    lines.append("| Method | Path | Handler | File | Request | Response | Framework |")
+    lines.append("|--------|------|---------|------|---------|----------|-----------|")
+
+    for ep in endpoints:
+        req = ep["request_type"] or "-"
+        res = ep["response_type"] or "-"
+        lines.append(
+            f"| {ep['method']} | {ep['path']} | {ep['handler']} "
+            f"| {ep['file_path']} | {req} | {res} | {ep['framework']} |"
+        )
+
+    return "\n".join(lines)
 
 
 @mcp.tool()
