@@ -21,15 +21,19 @@ Helios runs as an MCP server. Any agent that supports MCP (Claude Code, Cursor, 
 - **Documentation sites** — crawled and indexed locally
 - **Hybrid search** — FTS5 keyword matching + vector semantic similarity via Ollama embeddings, fused with Reciprocal Rank Fusion
 - **Live file watching** — auto-reindexes when your code changes
+- **Auto-docs discovery** — finds documentation URLs for your Python dependencies from package metadata
 
 ## Quick Start
 
 ```bash
 # Clone and install
-git clone https://github.com/your-org/helios.git
+git clone https://github.com/rinaldofesta/helios.git
 cd helios
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+
+# With numpy acceleration for vector search (recommended)
+pip install -e ".[dev,numpy]"
 
 # Start the MCP server (for testing)
 helios serve
@@ -79,7 +83,7 @@ helios_context(task="Add OAuth2 login to the FastAPI app")
 | Tool | Description |
 |------|-------------|
 | `helios_index` | Index a directory with scan + chunk + embed pipeline. Auto-watches for changes. |
-| `helios_deps` | Auto-detect and index all project dependencies from manifest files. |
+| `helios_deps` | Auto-detect and index all project dependencies. Discovers documentation URLs from package metadata. |
 | `helios_web` | Crawl and index a documentation site or web page. |
 | `helios_search` | Hybrid keyword + semantic search across all indexed sources. |
 | `helios_context` | Multi-source context assembly — searches project, deps, and docs, returns results grouped by source type. |
@@ -88,18 +92,29 @@ helios_context(task="Add OAuth2 login to the FastAPI app")
 | `helios_explore` | Browse the file structure of an indexed source. |
 | `helios_remove` | Remove an indexed source and all its data. |
 
+## MCP Resources
+
+Agents can also read these MCP resources passively:
+
+| Resource | Description |
+|----------|-------------|
+| `helios://status` | Current index status — sources, file counts, chunk counts, embeddings. |
+| `helios://sources` | List of all indexed source names for use with the `source` filter. |
+
 ## How Search Works
 
 Helios uses a three-layer search architecture:
 
 1. **FTS5 keyword search** — SQLite full-text search with BM25 ranking. Fast, exact matches.
-2. **Vector semantic search** — Ollama embeddings (`nomic-embed-text`, 768 dims) with cosine similarity. Finds conceptually similar content even with different wording.
+2. **Vector semantic search** — Ollama embeddings (`nomic-embed-text`, 768 dims) with cosine similarity. Finds conceptually similar content even with different wording. Accelerated with numpy when installed.
 3. **Reciprocal Rank Fusion** — Merges keyword and semantic rankings into a single result set. Gets the best of both.
 
 Search modes via `helios_search`:
 - `"auto"` (default) — hybrid if embeddings exist, keyword-only otherwise
 - `"keyword"` — FTS5 only
 - `"semantic"` — vector only
+
+An in-memory embedding cache avoids reloading vectors from SQLite on repeated queries. The cache is automatically invalidated when embeddings change.
 
 ## Dependency Intelligence
 
@@ -109,6 +124,7 @@ Search modes via `helios_search`:
 2. Finds the installed source code in your venv's `site-packages` or `node_modules`
 3. Indexes each package with the full pipeline (scan → chunk → embed)
 4. Names them `dep:<package>` so you can search within specific libraries
+5. Discovers documentation URLs from package metadata and reports them
 
 This means your AI agent has access to the **actual installed version** of every library — not stale training data. No more hallucinated APIs.
 
@@ -118,6 +134,16 @@ helios_search(query="OAuth2PasswordBearer", source="dep:fastapi")
 
 # Search across all dependencies
 helios_search(query="connection pool configuration")
+```
+
+After running `helios_deps`, you'll see discovered documentation URLs:
+```
+Documentation URLs discovered (14):
+  pydantic: https://docs.pydantic.dev
+  typer: https://typer.tiangolo.com
+  rich: https://rich.readthedocs.io/en/latest/
+  ...
+Use helios_web(url=...) to index any of these.
 ```
 
 ## Live File Watching
@@ -141,10 +167,10 @@ src/helios/
     chunker.py     Language-aware document chunking
     embeddings.py  Ollama embedding generation + cosine similarity
     crawler.py     URL crawler with HTML text extraction
-    dependencies.py Dependency detection and source path resolution
+    dependencies.py Dependency detection, source path resolution, docs URL discovery
     watcher.py     File watcher with debounced auto-reindexing
   server/          MCP server
-    app.py         FastMCP server with 9 tools
+    app.py         FastMCP server with 9 tools + 2 resources
     __main__.py    Entry point (python -m helios.server)
   core/            Task orchestration engine (Orchestrator/Sub-agent/Refiner)
   providers/       LLM provider abstractions (Ollama, Groq, OpenAI-compatible, llama.cpp)
@@ -160,14 +186,34 @@ src/helios/
 
 - **Python 3.11+** with async-first design
 - **SQLite + FTS5** for all persistence and full-text search
-- **MCP SDK** (`mcp` package) for agent integration
+- **MCP SDK** (`mcp` package) for agent integration via tools and resources
 - **Ollama** for local embeddings (`nomic-embed-text`) and LLM inference
 - **Pydantic v2** for all data models
 - **aiosqlite** for async database access
 - **watchdog** for file system monitoring
 - **httpx** for URL crawling (transitive dep from mcp)
+- **numpy** (optional) for accelerated vector similarity search
 - **Typer** for CLI, **Rich** for console output
 - **FastAPI** for web dashboard (optional)
+
+## Installation Options
+
+```bash
+# Core (keyword search + embeddings via Ollama)
+pip install -e .
+
+# With numpy acceleration for vector search (recommended)
+pip install -e ".[numpy]"
+
+# With local GGUF model support
+pip install -e ".[local]"
+
+# With web dashboard
+pip install -e ".[web]"
+
+# Everything
+pip install -e ".[all,dev]"
+```
 
 ## Configuration
 
