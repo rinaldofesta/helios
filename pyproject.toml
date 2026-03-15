@@ -3,12 +3,24 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "helios"
+name = "helios-context"
 version = "1.0.0a1"
 description = "Local-first context intelligence engine for AI coding agents — indexes codebases, dependencies, and docs via MCP"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
+keywords = ["mcp", "ai", "context", "search", "embeddings", "coding-agents", "local-first"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Text Processing :: Indexing",
+]
 dependencies = [
     "ollama>=0.4.0",
     "groq>=0.11.0",
@@ -27,7 +39,15 @@ dependencies = [
 [project.optional-dependencies]
 local = ["llama-cpp-python>=0.3.0"]
 web = ["fastapi>=0.115.0", "uvicorn>=0.30.0", "websockets>=13.0"]
+numpy = ["numpy>=1.24.0"]
 dev = ["pytest>=8.0.0", "pytest-asyncio>=0.24.0", "ruff>=0.6.0"]
+all = ["helios-context[local,web,numpy]"]
+
+[project.urls]
+Homepage = "https://github.com/rinaldofesta/helios"
+Documentation = "https://github.com/rinaldofesta/helios#readme"
+Repository = "https://github.com/rinaldofesta/helios"
+Issues = "https://github.com/rinaldofesta/helios/issues"
 
 [project.scripts]
 helios = "helios.cli.app:app"

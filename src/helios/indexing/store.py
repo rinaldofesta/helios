@@ -158,6 +158,37 @@ def _cosine_similarity(a: list[float], b: list[float]) -> float:
     return dot / (norm_a * norm_b)
 
 
+def _batch_cosine_similarity(
+    embeddings: list[list[float]],
+    query: list[float],
+) -> list[float]:
+    """Compute cosine similarity between a query vector and many embeddings.
+
+    Uses numpy for batch computation when available, falling back to
+    the pure-Python ``_cosine_similarity`` for each row otherwise.
+    """
+    try:
+        import numpy as np  # type: ignore[import-untyped]
+
+        matrix = np.asarray(embeddings, dtype=np.float32)  # (N, D)
+        q = np.asarray(query, dtype=np.float32)             # (D,)
+
+        dot_products = matrix @ q                            # (N,)
+        matrix_norms = np.linalg.norm(matrix, axis=1)       # (N,)
+        query_norm = np.linalg.norm(q)                       # scalar
+
+        if query_norm == 0:
+            return [0.0] * len(embeddings)
+
+        # Avoid division by zero for individual rows
+        denom = matrix_norms * query_norm
+        denom[denom == 0] = 1.0
+        similarities = dot_products / denom
+        return similarities.tolist()
+    except ImportError:
+        return [_cosine_similarity(emb, query) for emb in embeddings]
+
+
 # --------------------------------------------------------------------------- #
 #  Store
 # --------------------------------------------------------------------------- #
@@ -170,6 +201,9 @@ class ContentStore:
         self._data_dir = data_dir or Path.home() / ".helios"
         self._db_path = self._data_dir / "index.db"
         self._db: aiosqlite.Connection | None = None
+        # Embedding cache: source_name -> (chunk_ids, embeddings)
+        self._embed_cache: dict[str, tuple[list[str], list[list[float]]]] = {}
+        self._embed_cache_valid: bool = False
 
     async def initialize(self) -> None:
         self._data_dir.mkdir(parents=True, exist_ok=True)
@@ -477,6 +511,7 @@ class ContentStore:
 
         if removed or created:
             await db.commit()
+            self._invalidate_embed_cache()
         return created, removed
 
     async def get_chunks_without_embeddings(
@@ -505,6 +540,12 @@ class ContentStore:
                 (blob, chunk_id),
             )
         await db.commit()
+        self._invalidate_embed_cache()
+
+    def _invalidate_embed_cache(self) -> None:
+        """Clear the embedding cache (call after any embedding changes)."""
+        self._embed_cache.clear()
+        self._embed_cache_valid = False
 
     async def get_chunk_count(self, source_id: str) -> int:
         db = await self._ensure_db()
@@ -603,27 +644,41 @@ class ContentStore:
         source_name: str | None = None,
         limit: int = 10,
     ) -> list[ChunkSearchResult]:
-        """Search chunks by vector similarity (cosine)."""
-        db = await self._ensure_db()
+        """Search chunks by vector similarity (cosine).
 
-        if source_name:
-            sql = """SELECT c.id, c.embedding
-                     FROM chunks c
-                     JOIN sources s ON c.source_id = s.id
-                     WHERE s.name = ? AND c.embedding IS NOT NULL"""
-            params: tuple = (source_name,)
-        else:
-            sql = "SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL"
-            params = ()
+        Uses an in-memory cache to avoid re-loading embeddings from
+        SQLite on every query. Cache is invalidated when embeddings change.
+        """
+        cache_key = source_name or "__all__"
 
-        # Compute similarities
-        scored: list[tuple[float, str]] = []
-        async with db.execute(sql, params) as cur:
-            async for row in cur:
-                emb = _deserialize_f32(row[1])
-                sim = _cosine_similarity(query_embedding, emb)
-                scored.append((sim, row[0]))
+        if cache_key not in self._embed_cache:
+            db = await self._ensure_db()
+            if source_name:
+                sql = """SELECT c.id, c.embedding
+                         FROM chunks c
+                         JOIN sources s ON c.source_id = s.id
+                         WHERE s.name = ? AND c.embedding IS NOT NULL"""
+                params: tuple = (source_name,)
+            else:
+                sql = "SELECT id, embedding FROM chunks WHERE embedding IS NOT NULL"
+                params = ()
 
+            chunk_ids: list[str] = []
+            embeddings: list[list[float]] = []
+            async with db.execute(sql, params) as cur:
+                async for row in cur:
+                    chunk_ids.append(row[0])
+                    embeddings.append(_deserialize_f32(row[1]))
+            self._embed_cache[cache_key] = (chunk_ids, embeddings)
+
+        chunk_ids, embeddings = self._embed_cache[cache_key]
+
+        if not chunk_ids:
+            return []
+
+        # Batch cosine similarity (numpy-accelerated when available)
+        similarities = _batch_cosine_similarity(embeddings, query_embedding)
+        scored = list(zip(similarities, chunk_ids))
         scored.sort(key=lambda x: x[0], reverse=True)
 
         # Fetch details for top results

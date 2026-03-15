@@ -63,7 +63,11 @@ async def ensure_embed_model(
     model: str = DEFAULT_EMBED_MODEL,
     host: str | None = None,
 ) -> bool:
-    """Ensure the embedding model is available, pulling if needed."""
+    """Ensure the embedding model is available, pulling if needed.
+
+    On first use, will auto-pull the model (~274MB for nomic-embed-text).
+    Logs a clear message so the user knows what's happening.
+    """
     try:
         import ollama as ollama_lib
         client = ollama_lib.AsyncClient(host=host) if host else ollama_lib.AsyncClient()
@@ -71,8 +75,14 @@ async def ensure_embed_model(
             await client.show(model)
             return True
         except Exception:
-            logger.info("Pulling embedding model: %s", model)
+            logger.warning(
+                "Embedding model '%s' not found locally. "
+                "Pulling now (~274MB for nomic-embed-text). "
+                "This is a one-time download.",
+                model,
+            )
             await client.pull(model)
+            logger.info("Embedding model '%s' ready.", model)
             return True
     except Exception as e:
         logger.warning("Failed to ensure embedding model %s: %s", model, e)

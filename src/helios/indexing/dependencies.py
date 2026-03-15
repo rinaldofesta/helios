@@ -22,6 +22,7 @@ class Dependency:
     name: str
     version: str | None = None
     source_path: Path | None = None
+    docs_url: str | None = None
     ecosystem: str = ""  # "python", "javascript"
     dev: bool = False
 
@@ -85,6 +86,9 @@ def detect_dependencies(
             result.resolved += 1
         else:
             result.unresolved.append(dep.name)
+
+    # Discover documentation URLs from package metadata
+    discover_docs_urls(deps, py_site)
 
     result.dependencies = deps
     return result
@@ -209,6 +213,52 @@ def _find_python_pkg_dir(name: str, site_packages: Path) -> Path | None:
                     return pkg_dir
 
     return None
+
+
+def discover_docs_urls(deps: list[Dependency], site_packages: Path | None) -> None:
+    """Try to find documentation URLs for Python packages from dist-info metadata."""
+    if not site_packages:
+        return
+
+    for dep in deps:
+        if dep.ecosystem != "python" or dep.docs_url:
+            continue
+
+        normalized = dep.name.replace("-", "_").lower()
+
+        for entry in site_packages.iterdir():
+            if not entry.name.endswith(".dist-info") or not entry.is_dir():
+                continue
+            dist_name = entry.name.split("-")[0].lower().replace("-", "_")
+            if dist_name != normalized:
+                continue
+
+            # Read METADATA file for Project-URL entries
+            metadata_file = entry / "METADATA"
+            if not metadata_file.exists():
+                break
+
+            try:
+                text = metadata_file.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                break
+
+            for line in text.splitlines():
+                if not line.startswith("Project-URL:"):
+                    continue
+                # Format: "Project-URL: Documentation, https://..."
+                parts = line.split(",", 1)
+                if len(parts) != 2:
+                    continue
+                label = parts[0].replace("Project-URL:", "").strip().lower()
+                url = parts[1].strip()
+                if label in ("documentation", "docs", "doc", "homepage", "home"):
+                    if url.startswith("http"):
+                        dep.docs_url = url
+                        # Prefer "documentation" over "homepage"
+                        if label in ("documentation", "docs", "doc"):
+                            break
+            break
 
 
 def estimate_package_size(path: Path) -> int:

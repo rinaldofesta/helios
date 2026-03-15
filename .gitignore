@@ -1,38 +1,99 @@
+# ==========================
 # Python
+# ==========================
 __pycache__/
 *.py[cod]
 *$py.class
-*.egg-info/
+*.so
 *.egg
-dist/
-build/
+*.egg-info/
 *.whl
 
-# Virtual environments
-env/
-venv/
-.venv/
+# Distribution / packaging
+dist/
+build/
+sdist/
+eggs/
+*.tar.gz
 
-# IDE
-.vscode/
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# ==========================
+# Virtual environments
+# ==========================
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================
+# Testing & linting
+# ==========================
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+.nox/
+
+# ==========================
+# IDE & editors
+# ==========================
 .idea/
+.vscode/
 *.swp
 *.swo
+*~
+*.sublime-project
+*.sublime-workspace
 
+# ==========================
 # OS
+# ==========================
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Secrets
+# ==========================
+# Secrets & credentials
+# ==========================
 .env
+.env.*
 *.key
+*.pem
 
-# Helios runtime
+# ==========================
+# Helios runtime & data
+# ==========================
+# User config (the .example is tracked)
+helios.toml
+
+# SQLite databases
 *.db
+*.db-shm
+*.db-wal
+
+# Session output
 Output/
 sessions/
 skills/
 
-# Logs
+# Downloaded models (large binary files)
+*.gguf
+
+# ==========================
+# Logs & exchange files
+# ==========================
 *.log
 *.md.exchange
+
+# ==========================
+# Jupyter (if used for experiments)
+# ==========================
+.ipynb_checkpoints/

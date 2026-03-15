@@ -189,6 +189,34 @@ mcp = FastMCP(
 
 
 # --------------------------------------------------------------------------- #
+#  MCP Resources
+# --------------------------------------------------------------------------- #
+
+
+@mcp.resource("helios://status")
+async def resource_status() -> str:
+    """Current Helios index status — sources, file counts, chunk counts, embeddings."""
+    store = await get_store()
+    sources = await store.list_sources()
+    if not sources:
+        return "No sources indexed."
+    lines: list[str] = []
+    for s in sources:
+        chunks = await store.get_chunk_count(s.id)
+        embeds = await store.get_embedding_count(s.id)
+        lines.append(f"{s.name} ({s.source_type}): {s.file_count} files, {chunks} chunks, {embeds} embeddings")
+    return "\n".join(lines)
+
+
+@mcp.resource("helios://sources")
+async def resource_sources() -> str:
+    """List of all indexed source names for use with helios_search source parameter."""
+    store = await get_store()
+    sources = await store.list_sources()
+    return "\n".join(s.name for s in sources) if sources else "No sources indexed."
+
+
+# --------------------------------------------------------------------------- #
 #  Tools
 # --------------------------------------------------------------------------- #
 
@@ -527,6 +555,14 @@ async def helios_deps(
         short = deps_result.unresolved[:10]
         more = f" (+{len(deps_result.unresolved) - 10} more)" if len(deps_result.unresolved) > 10 else ""
         lines.append(f"  Not found: {', '.join(short)}{more}")
+
+    # Report discovered documentation URLs
+    docs_deps = [d for d in deps_result.dependencies if d.docs_url]
+    if docs_deps:
+        lines.append(f"\n  Documentation URLs discovered ({len(docs_deps)}):")
+        for d in docs_deps[:10]:
+            lines.append(f"    {d.name}: {d.docs_url}")
+        lines.append("  Use helios_web(url=...) to index any of these.")
 
     return "\n".join(lines)
 
