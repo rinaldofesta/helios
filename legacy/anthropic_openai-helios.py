@@ -8,10 +8,10 @@ from datetime import datetime
 import json
 
 # Set up the Anthropic API client
-anthropic_client = Anthropic(api_key="REDACTED_ANTHROPIC_KEY_2")
+anthropic_client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 # Set up the OpenAI API client
-openai_client = OpenAI(api_key="REDACTED_OPENAI_KEY")
+openai_client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # Set the Claude model to use for the sub-agent
 claude_model = "claude-3-opus-20240229"

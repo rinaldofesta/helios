@@ -8,7 +8,7 @@ import json
 from tavily import TavilyClient
 
 # Set up the Anthropic API client
-client = Anthropic(api_key="REDACTED_ANTHROPIC_KEY_1")
+client = Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
 
 # Available Claude models (as of October 2025):
 # Claude Sonnet 4.5     claude-sonnet-4-5-20250929   (Best for complex agents & coding)
